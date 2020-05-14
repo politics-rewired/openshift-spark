@@ -1,8 +1,0 @@
-#!/bin/sh
-set -u
-set -e
-
-# install scl repos, epel, python 37, and numpy for python37
-yum install -y centos-release-scl epel-release \
-    && yum-config-manager --enable rhel-server-rhscl-7-rpms \
-    && yum install -y rh-python37 rh-python37-numpy
