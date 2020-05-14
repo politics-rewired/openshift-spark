@@ -1,0 +1,5 @@
+schema_version: 1
+
+name: python37
+execute:
+  - script: install
