@@ -1,4 +1,4 @@
-# Copyright 2017 Red Hat
+# Copyright 2019 Red Hat
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,76 +14,126 @@
 #
 # ------------------------------------------------------------------------
 #
-# This is a Dockerfile for the radanalyticsio/openshift-spark:2.4-latest image.
+# This is a Dockerfile for the radanalyticsio/openshift-spark:3.0 image.
 
-FROM centos:centos7
+
+## START target image radanalyticsio/openshift-spark:3.0
+## \
+FROM centos:8
 
 USER root
 
-
-# Install required RPMs and ensure that the packages were installed
-RUN yum install -y java-1.8.0-openjdk wget \
-    && yum clean all && rm -rf /var/cache/yum \
-    && rpm -q java-1.8.0-openjdk wget
-
-
-# Add all artifacts to the /tmp/artifacts
-# directory
-COPY \
-    spark-2.4.5-bin-hadoop2.7.tgz \
-    /tmp/artifacts/
-
-
-# Environment variables
+###### START module 'common:1.0'
+###### \
+# Copy 'common' module content
+COPY modules/common /tmp/scripts/common
+# Switch to 'root' user to install 'common' module defined packages
+USER root
+# Install packages defined in the 'common' module
+RUN yum --setopt=tsflags=nodocs install -y python37 \
+    && rpm -q python37
+# Set 'common' module defined environment variables
 ENV \
-    JBOSS_IMAGE_NAME="radanalyticsio/openshift-spark" \
-    JBOSS_IMAGE_VERSION="2.4-latest" \
+    SPARK_INSTALL="/opt/spark-distro" 
+# Custom scripts from 'common' module
+USER root
+RUN [ "sh", "-x", "/tmp/scripts/common/install" ]
+###### /
+###### END module 'common:1.0'
+
+###### START module 'metrics:1.0'
+###### \
+# Copy 'metrics' module content
+COPY modules/metrics /tmp/scripts/metrics
+# Custom scripts from 'metrics' module
+USER root
+RUN [ "sh", "-x", "/tmp/scripts/metrics/install" ]
+###### /
+###### END module 'metrics:1.0'
+
+###### START module 'spark:1.0'
+###### \
+# Copy 'spark' module general artifacts
+COPY \
+    spark-3.0.1-bin-hadoop3.2.tgz \
+    /tmp/artifacts/
+# Copy 'spark' module content
+COPY modules/spark /tmp/scripts/spark
+# Switch to 'root' user to install 'spark' module defined packages
+USER root
+# Install packages defined in the 'spark' module
+RUN yum --setopt=tsflags=nodocs install -y wget \
+    && rpm -q wget
+# Set 'spark' module defined environment variables
+ENV \
     PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/spark/bin" \
-    SCL_ENABLE_CMD="scl enable rh-python37" \
+    SPARK_HOME="/opt/spark" \
+    SPARK_INSTALL="/opt/spark-distro" 
+# Custom scripts from 'spark' module
+USER root
+RUN [ "sh", "-x", "/tmp/scripts/spark/install" ]
+###### /
+###### END module 'spark:1.0'
+
+###### START module 's2i:1.0'
+###### \
+# Copy 's2i' module content
+COPY modules/s2i /tmp/scripts/s2i
+# Switch to 'root' user to install 's2i' module defined packages
+USER root
+# Install packages defined in the 's2i' module
+RUN yum --setopt=tsflags=nodocs install -y wget \
+    && rpm -q wget
+# Set 's2i' module defined environment variables
+ENV \
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/spark/bin" \
     SPARK_HOME="/opt/spark" \
     SPARK_INSTALL="/opt/spark-distro" \
     STI_SCRIPTS_PATH="/usr/libexec/s2i" 
+# Custom scripts from 's2i' module
+USER root
+RUN [ "sh", "-x", "/tmp/scripts/s2i/install" ]
+###### /
+###### END module 's2i:1.0'
 
-# Labels
+###### START image 'radanalyticsio/openshift-spark:3.0'
+###### \
+# Switch to 'root' user to install 'radanalyticsio/openshift-spark' image defined packages
+USER root
+# Install packages defined in the 'radanalyticsio/openshift-spark' image
+RUN yum --setopt=tsflags=nodocs install -y java-11-openjdk python3-numpy \
+    && rpm -q java-11-openjdk python3-numpy
+# Set 'radanalyticsio/openshift-spark' image defined environment variables
+ENV \
+    JBOSS_IMAGE_NAME="radanalyticsio/openshift-spark" \
+    JBOSS_IMAGE_VERSION="3.0" 
+# Set 'radanalyticsio/openshift-spark' image defined labels
 LABEL \
-    io.cekit.version="2.2.7"  \
+    io.cekit.version="3.6.0"  \
     io.openshift.s2i.scripts-url="image:///usr/libexec/s2i"  \
-    maintainer="Chad Roberts <croberts@redhat.com>"  \
+    maintainer="Trevor McKay <tmckay@redhat.com>"  \
     name="radanalyticsio/openshift-spark"  \
-    org.concrt.version="2.2.7"  \
-    sparkversion="2.4.5"  \
-    version="2.4-latest" 
+    sparkversion="3.0.1"  \
+    version="3.0" 
+###### /
+###### END image 'radanalyticsio/openshift-spark:3.0'
 
-# Add scripts used to configure the image
-COPY modules /tmp/scripts
 
-# Custom scripts
+# Switch to 'root' user and remove artifacts and modules
 USER root
-RUN [ "bash", "-x", "/tmp/scripts/common/install" ]
+RUN [ ! -d /tmp/scripts ] || rm -rf /tmp/scripts
+RUN [ ! -d /tmp/artifacts ] || rm -rf /tmp/artifacts
 
-USER root
-RUN [ "bash", "-x", "/tmp/scripts/metrics/install" ]
+# Clear package manager metadata
+RUN yum clean all && [ ! -d /var/cache/yum ] || rm -rf /var/cache/yum
 
-USER root
-RUN [ "bash", "-x", "/tmp/scripts/spark/install" ]
-
-USER root
-RUN [ "bash", "-x", "/tmp/scripts/s2i/install" ]
-
-USER root
-RUN [ "bash", "-x", "/tmp/scripts/python37/install" ]
-
-USER root
-RUN rm -rf /tmp/scripts
-USER root
-RUN rm -rf /tmp/artifacts
-
+# Define the user
 USER 185
-
-# Specify the working directory
+# Define the working directory
 WORKDIR /tmp
-
+# Define entrypoint
 ENTRYPOINT ["/entrypoint"]
-
+# Define run cmd
 CMD ["/launch.sh"]
-
+## /
+## END target image
